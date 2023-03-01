@@ -11,7 +11,7 @@ const config = configManager.load();
 const app = express();
 app.use(bodyParser.json());
 
-
+const runningProcess = {};
 
 app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
@@ -21,14 +21,29 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     const cmd = 'cd ' + app.directory + ' && git pull && ' + app.cmd;
 
-    logger("Processing...", { app: req.params.appName, cmd });
+    const appName = req.params.appName;
 
+    logger("Processing...", { app: appName, cmd });
+
+    if(runningProcess[appName] && runningProcess[appName].running)
+        return logger("Cannot created a new flow since one is already running", { app: appName, startedAt: runningProcess[appName].startedAt  });
+
+    runningProcess[appName] = {
+        running: true,
+        startedAt: new Date().getTime()
+    };
 
     const ciProcess = childProcess.exec(cmd);
     ciProcess.stdout.pipe(process.stdout);
 
-    ciProcess.on('exit', function() {
-        logger('App process exited');
+
+    ciProcess.on('exit', function(code) {
+
+        runningProcess[appName].running = false;
+        runningProcess[appName].endedAt = new Date().getTime();
+
+        logger('App process exited', { code, 'executionTime[ms]': runningProcess[appName].endedAt - runningProcess[appName].startedAt });
+
     });
 
 });
