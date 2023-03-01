@@ -1,6 +1,8 @@
 module.exports = {
-    apps: [{
-        name: "gwciserver",
-        script: "./index.js"
-    }]
+    apps: [
+        {
+            name: "gwciserver",
+            script: "./index.js"
+        }
+    ]
 }
