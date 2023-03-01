@@ -12,6 +12,7 @@ const app = express();
 app.use(bodyParser.json());
 
 const runningProcess = {};
+const allowedTimeout = 60 * 10 * 1000;
 
 app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
@@ -30,7 +31,13 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     runningProcess[appName] = {
         running: true,
-        startedAt: new Date().getTime()
+        startedAt: new Date().getTime(),
+        watchdogTimer: setTimeout(()=> {
+
+            appName.kill();
+            logger("The flow has been killed for exeiding the timeout", { app: appName, timeout: allowedTimeout })
+
+        }, allowedTimeout)
     };
 
     const ciProcess = childProcess.exec(cmd);
@@ -39,6 +46,9 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     ciProcess.on('exit', function(code) {
 
+
+        clearTimeout(runningProcess[appName].watchdogTimer);
+        runningProcess[appName].watchdogTimer = undefined;
         runningProcess[appName].running = false;
         runningProcess[appName].endedAt = new Date().getTime();
 
