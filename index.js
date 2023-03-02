@@ -18,6 +18,8 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     res.json({ results: "OK", message: "Done!" });
 
+    logger("Github webhook", { body: req.body });
+
     const app = req.locals.app;
 
     const cmd = 'cd ' + app.directory + ' && git pull && ' + app.cmd;
