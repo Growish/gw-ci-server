@@ -16,9 +16,9 @@ const allowedTimeout = 60 * 10 * 1000;
 
 app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
-    res.json({ results: "OK", message: "Done!" });
+    res.json({results: "OK", message: "Done!"});
 
-    logger("Github webhook", { pusher: req.body.pusher, commits: req.body.commits });
+    logger("Github webhook", {pusher: req.body.pusher, commits: req.body.commits});
 
     const app = req.locals.app;
 
@@ -26,44 +26,56 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     const appName = req.params.appName;
 
-    if(!queues[appName])
-        queues[appName] = fastq.promise(async (data) => {
+    if (!queues[appName])
+        queues[appName] = fastq.promise((data) => new Promise((resolve, reject) => {
             //Worker
-            logger("Processing...", { app: data.appName, cmd: data.cmd });
+            logger("Processing...", {app: data.appName, cmd: data.cmd});
             data.startedAt = new Date().getTime();
 
-            const ciProcess = childProcess.exec(data.cmd);
-            ciProcess.stdout.pipe(process.stdout);
+            let ciProcess;
 
-            data.watchdogTimer = setTimeout(()=> {
+            try {
+                ciProcess = childProcess.exec(data.cmd);
+                ciProcess.stdout.pipe(process.stdout);
+            }
+            catch (error) {
+                logger("Something went wrong!", { app: data.appName, error });
+                return resolve();
+            }
+
+            data.watchdogTimer = setTimeout(() => {
 
                 ciProcess.kill();
-                logger("The flow has been killed for exceeding the timeout", { app: data.appName, timeout: allowedTimeout })
+                logger("The flow has been killed for exceeding the timeout", {
+                    app: data.appName,
+                    timeout: allowedTimeout
+                })
+                resolve();
 
             }, allowedTimeout);
 
-            ciProcess.on('exit', function(code) {
+            ciProcess.on('exit', function (code) {
 
 
                 clearTimeout(data.watchdogTimer);
                 data.endedAt = new Date().getTime();
 
-                logger('App process exited', { code, 'executionTime[ms]': data.endedAt - data.startedAt });
+                logger('App process exited', {code, 'executionTime[ms]': data.endedAt - data.startedAt});
 
+                resolve();
             });
 
-        }, 1);
+        }), 1);
 
-    logger('Pushing into queue', { app: appName })
+    logger('Pushing into queue', {app: appName})
     await queues[appName].push({
         appName,
         cmd,
-        queuedAt: new Date().getTime(),
-
-    })
+        queuedAt: new Date().getTime()
+    });
 
 });
 
 app.listen(config.serverPort, () => {
-    logger("Server running!", { port: config.serverPort });
+    logger("Server running!", {port: config.serverPort});
 });
