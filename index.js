@@ -14,7 +14,6 @@ app.use(bodyParser.json());
 const queues = {};
 const allowedTimeout = 60 * 10 * 1000;
 
-
 app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     res.json({ results: "OK", message: "Done!" });
