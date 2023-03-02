@@ -60,7 +60,6 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     })
 
-
 });
 
 app.listen(config.serverPort, () => {
