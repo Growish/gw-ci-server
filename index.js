@@ -2,6 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const childProcess = require('child_process');
 const fastq = require('fastq');
+const os = require("os");
+
 
 const githubSign = require('./lib/github-sign');
 const configManager = require('./lib/config');
@@ -18,7 +20,10 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     res.json({results: "OK", message: "Done!"});
 
-    logger("Github webhook", {pusher: req.body.pusher, commits: req.body.commits});
+    const freeMemory = (os.freemem() / 1024) / 1024;
+    const totalMemory = (os.totalmem() / 1024) / 1024;
+
+    logger("Github webhook", {pusher: req.body.pusher, commits: req.body.commits, freeMemory, totalMemory });
 
     const app = req.locals.app;
 
