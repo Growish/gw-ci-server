@@ -14,16 +14,35 @@ const app = express();
 app.use(bodyParser.json());
 
 const queues = {};
+const runningProcess = {};
 const allowedTimeout = 60 * 10 * 1000;
+setInterval(() => {
+
+    let print = false;
+    for (const queueName in queues) {
+
+        if (!queues[queueName].idle()) {
+            print = true;
+            break;
+        }
+    }
+
+    if(!print)
+        return;
+
+    const freeMemory = (os.freemem() / 1024) / 1024;
+    const totalMemory = (os.totalmem() / 1024) / 1024;
+
+    logger("System free memory [mb]: ", freeMemory.toFixed(2));
+
+}, 1000);
 
 app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     res.json({results: "OK", message: "Done!"});
 
-    const freeMemory = (os.freemem() / 1024) / 1024;
-    const totalMemory = (os.totalmem() / 1024) / 1024;
 
-    logger("Github webhook", {pusher: req.body.pusher, freeMemory, totalMemory });
+    logger("Github webhook", {pusher: req.body.pusher});
 
     const app = req.locals.app;
 
@@ -37,20 +56,20 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
             logger("Processing...", {app: data.appName, cmd: data.cmd});
             data.startedAt = new Date().getTime();
 
-            let ciProcess;
+
+
 
             try {
-                ciProcess = childProcess.exec(data.cmd);
-                ciProcess.stdout.pipe(process.stdout);
-            }
-            catch (error) {
-                logger("Something went wrong!", { app: data.appName, error });
+                runningProcess[appName] = childProcess.exec(data.cmd);
+                runningProcess[appName].stdout.pipe(process.stdout);
+            } catch (error) {
+                logger("Something went wrong!", {app: data.appName, error});
                 return resolve();
             }
 
             data.watchdogTimer = setTimeout(() => {
 
-                ciProcess.kill();
+                runningProcess[appName].kill();
                 logger("The flow has been killed for exceeding the timeout", {
                     app: data.appName,
                     timeout: allowedTimeout
@@ -59,11 +78,12 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
             }, allowedTimeout);
 
-            ciProcess.on('exit', function (code) {
+            runningProcess[appName].on('exit', function (code) {
 
 
                 clearTimeout(data.watchdogTimer);
                 data.endedAt = new Date().getTime();
+                delete runningProcess[appName];
 
                 logger('App process exited', {code, 'executionTime[ms]': data.endedAt - data.startedAt});
 
@@ -83,4 +103,20 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
 app.listen(config.serverPort, () => {
     logger("Server running!", {port: config.serverPort});
+});
+
+process.on('SIGINT', async () => {
+
+    for(const appName in runningProcess) {
+        try {
+            runningProcess[appName].kill();
+            logger("Running process killed!", { appName });
+        }
+        catch (error) {
+            logger("Cannot kill process", { appName, error });
+        }
+    }
+
+    process.exit(0);
+
 });
