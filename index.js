@@ -23,7 +23,7 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
     const freeMemory = (os.freemem() / 1024) / 1024;
     const totalMemory = (os.totalmem() / 1024) / 1024;
 
-    logger("Github webhook", {pusher: req.body.pusher, commits: req.body.commits, freeMemory, totalMemory });
+    logger("Github webhook", {pusher: req.body.pusher, freeMemory, totalMemory });
 
     const app = req.locals.app;
 
