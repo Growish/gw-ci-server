@@ -7,6 +7,7 @@ const os = require("os");
 const githubSign = require('./lib/github-sign');
 const configManager = require('./lib/config');
 const logger = require('./lib/logger');
+const Stack = require('./lib/stack');
 
 
 const config = configManager.load();
@@ -45,13 +46,18 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
     res.json({results: "OK", message: "Done!"});
 
-    const slackMessage = new SlackMessage(config.slack.channelId);
+    const slackMessage = new SlackMessage(config?.slack?.channelId);
 
     logger("Github webhook", {pusher: req.body.pusher});
 
     const app = req.locals.app;
 
-    const cmd = 'cd ' + app.directory + ' && git pull && ' + app.cmd;
+    let cmd = 'cd ' + app.directory;
+
+    if(app.ignoreGitPull)
+        cmd += ' && ' + app.cmd;
+    else
+        cmd += ' && git pull && ' + app.cmd;
 
     const appName = req.params.appName;
 
@@ -62,6 +68,7 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
         queues[appName] = fastq.promise((data) => new Promise(async (resolve, reject) => {
 
             const _slackMessage = data.slackMessage || slackMessage;
+            const stack = new Stack(5);
 
             logger("Processing...", {app: data.appName, cmd: data.cmd});
             data.startedAt = new Date().getTime();
@@ -70,12 +77,23 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
 
             try {
                 runningProcess[appName] = childProcess.exec(data.cmd);
-                runningProcess[appName].stdout.pipe(process.stdout);
+                //runningProcess[appName].stdout.pipe(process.stdout);
+                runningProcess[appName].stdout.on('data', function (data) {
+                    logger("[" + appName + "] ", { data });
+                    stack.push(data);
+                });
+
             } catch (error) {
                 logger("Something went wrong!", {app: data.appName, error});
                 await _slackMessage.updateCiFlow('Failed');
                 return resolve();
             }
+
+            data.statusUpdateTimer = setInterval(async ()=> {
+
+                await _slackMessage.updateCiFlow(null, null, stack.print());
+
+            }, 5000);
 
             data.watchdogTimer = setTimeout(async () => {
 
@@ -93,7 +111,9 @@ app.post('/app/:appName', configManager.mw, githubSign.mw, async (req, res) => {
             runningProcess[appName].on('exit', async function (code) {
 
 
-                clearTimeout(data.watchdogTimer);
+                data.statusUpdateTimer && clearInterval(data.statusUpdateTimer);
+                data.watchdogTimer && clearTimeout(data.watchdogTimer);
+
                 data.endedAt = new Date().getTime();
                 delete runningProcess[appName];
 
